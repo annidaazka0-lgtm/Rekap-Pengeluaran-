@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rekap Pengeluaran Okt 2026 - Jun 2027</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:#fff7fc;color:#333}
+header{background:linear-gradient(135deg,#dca8e8,#f7c9df);padding:24px 18px;text-align:center}
+header h1{margin:0 0 6px;font-size:25px} header p{margin:0}
+.container{max-width:1100px;margin:20px auto;padding:0 14px}
+.card{background:white;border-radius:18px;padding:18px;box-shadow:0 4px 16px #00000012;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+input,select,button{width:100%;padding:11px;border:1px solid #ddd;border-radius:10px;font-size:14px}
+button{cursor:pointer;border:0;font-weight:bold}
+.primary{background:#a96bc1;color:white}.green{background:#65ad83;color:white}.gray{background:#777;color:white}.red{background:#d86b78;color:white}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.stat{padding:15px;border-radius:13px;background:#f7edf9}.stat b{display:block;font-size:20px;margin-top:5px}
+.tablewrap{overflow:auto} table{width:100%;border-collapse:collapse;margin-top:12px;min-width:700px}
+th,td{padding:10px;border-bottom:1px solid #eee;text-align:left} th{background:#faf2fc}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{width:auto;padding:10px 15px}
+.small{font-size:12px;color:#777}
+@media(max-width:700px){.grid{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr}.actions button{width:100%}}
+</style>
+</head>
+<body>
+<header>
+<h1>💰 Rekap Pengeluaran</h1>
+<p>Oktober 2026 — Juni 2027</p>
+</header>
+<div class="container">
+<div class="card">
+<h3>Tambah Pengeluaran Harian</h3>
+<div class="grid">
+<input type="date" id="date">
+<input type="text" id="desc" placeholder="Keterangan, contoh: makan">
+<select id="cat">
+<option>Makanan</option><option>Transportasi</option><option>Pendidikan</option>
+<option>Kebutuhan Pribadi</option><option>Tagihan</option><option>Belanja</option>
+<option>Hiburan</option><option>Lainnya</option>
+</select>
+<input type="number" id="amount" placeholder="Nominal (Rp)" min="0">
+</div>
+<div style="margin-top:10px"><button class="primary" onclick="addExpense()">+ Simpan Pengeluaran</button></div>
+<p class="small">Data tersimpan otomatis di browser perangkat ini. Tetap ekspor ke Excel sebagai cadangan.</p>
+</div>
+
+<div class="card">
+<div class="grid">
+<select id="monthFilter" onchange="render()"></select>
+<select id="catFilter" onchange="render()"><option value="">Semua kategori</option></select>
+<input type="text" id="search" placeholder="Cari keterangan..." oninput="render()">
+<div class="actions">
+<button class="green" onclick="exportExcel()">⬇ Simpan ke Excel</button>
+<button class="gray" onclick="exportCSV()">⬇ CSV</button>
+</div>
+</div>
+<div class="summary">
+<div class="stat">Jumlah transaksi<b id="count">0</b></div>
+<div class="stat">Total pengeluaran<b id="total">Rp0</b></div>
+<div class="stat">Rata-rata transaksi<b id="avg">Rp0</b></div>
+</div>
+</div>
+
+<div class="card">
+<h3 id="title">Daftar Pengeluaran</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th>Nominal</th><th>Aksi</th></tr></thead>
+<tbody id="tbody"></tbody>
+</table></div>
+</div>
+</div>
+
+<script>
+const months = [
+["2026-10","Oktober 2026"],["2026-11","November 2026"],["2026-12","Desember 2026"],
+["2027-01","Januari 2027"],["2027-02","Februari 2027"],["2027-03","Maret 2027"],
+["2027-04","April 2027"],["2027-05","Mei 2027"],["2027-06","Juni 2027"]];
+let data = JSON.parse(localStorage.getItem("pengeluaran_2026_2027")||"[]");
+const money = n => new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
+const monthName = key => (months.find(x=>x[0]===key)||["","Di luar periode"])[1];
+
+function setup(){
+  monthFilter.innerHTML='<option value="">Semua bulan</option>'+months.map(x=>`<option value="${x[0]}">${x[1]}</option>`).join("");
+  const cats=[...new Set(data.map(x=>x.cat))].sort();
+  catFilter.innerHTML='<option value="">Semua kategori</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join("");
+  const now=new Date(), y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,"0");
+  date.value=(months.some(x=>x[0]===`${y}-${m}`)?`${y}-${m}-01`:"2026-10-01");
+  render();
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function addExpense(){
+  const d=date.value, desc=descEl(), a=Number(amount.value), cat=catEl();
+  if(!d||!desc||!a||a<0){alert("Lengkapi tanggal, keterangan, dan nominal.");return}
+  if(d<"2026-10-01"||d>"2027-06-30"){alert("Tanggal harus antara 1 Oktober 2026 dan 30 Juni 2027.");return}
+  data.push({id:Date.now(),date:d,desc,cat,amount:a});
+  data.sort((a,b)=>a.date.localeCompare(b.date));
+  save(); document.getElementById("desc").value=""; document.getElementById("amount").value="";
+  setup();
+}
+function descEl(){return document.getElementById("desc").value.trim()}
+function catEl(){return document.getElementById("cat").value}
+function save(){localStorage.setItem("pengeluaran_2026_2027",JSON.stringify(data))}
+function del(id){if(confirm("Hapus transaksi ini?")){data=data.filter(x=>x.id!==id);save();setup()}}
+function render(){
+  const mf=monthFilter.value, cf=catFilter.value, q=search.value.toLowerCase();
+  let rows=data.filter(x=>(!mf||x.date.slice(0,7)===mf)&&(!cf||x.cat===cf)&&(!q||x.desc.toLowerCase().includes(q)));
+  let total=rows.reduce((s,x)=>s+x.amount,0);
+  count.textContent=rows.length; document.getElementById("total").textContent=money(total);
+  document.getElementById("avg").textContent=money(rows.length?total/rows.length:0);
+  title.textContent="Daftar Pengeluaran"+(mf?" — "+monthName(mf):"");
+  tbody.innerHTML=rows.length?rows.map(x=>`<tr><td>${x.date}</td><td>${esc(x.desc)}</td><td>${esc(x.cat)}</td><td>${money(x.amount)}</td><td><button class="red" style="width:auto;padding:7px 10px" onclick="del(${x.id})">Hapus</button></td></tr>`).join(""):'<tr><td colspan="5" style="text-align:center;color:#888">Belum ada data.</td></tr>';
+}
+function filtered(){
+ const mf=monthFilter.value, cf=catFilter.value, q=search.value.toLowerCase();
+ return data.filter(x=>(!mf||x.date.slice(0,7)===mf)&&(!cf||x.cat===cf)&&(!q||x.desc.toLowerCase().includes(q)));
+}
+function exportExcel(){
+ if(typeof XLSX==="undefined"){alert("Fitur Excel membutuhkan koneksi internet. Gunakan CSV jika offline.");return}
+ const wb=XLSX.utils.book_new(), rows=[["Tanggal","Bulan","Keterangan","Kategori","Nominal (Rp)"]];
+ data.forEach(x=>rows.push([x.date,monthName(x.date.slice(0,7)),x.desc,x.cat,x.amount]));
+ const ws=XLSX.utils.aoa_to_sheet(rows); XLSX.utils.book_append_sheet(wb,ws,"Rekap Semua");
+ months.forEach(([key,name])=>{
+   const r=[["Tanggal","Keterangan","Kategori","Nominal (Rp)"]];
+   data.filter(x=>x.date.slice(0,7)===key).forEach(x=>r.push([x.date,x.desc,x.cat,x.amount]));
+   const s=XLSX.utils.aoa_to_sheet(r); XLSX.utils.book_append_sheet(wb,s,name.slice(0,31));
+ });
+ XLSX.writeFile(wb,"Rekap_Pengeluaran_Oktober_2026_Juni_2027.xlsx");
+}
+function exportCSV(){
+ const rows=[["Tanggal","Bulan","Keterangan","Kategori","Nominal (Rp)"],...filtered().map(x=>[x.date,monthName(x.date.slice(0,7)),x.desc,x.cat,x.amount])];
+ const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+ const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="Rekap_Pengeluaran.csv";a.click();
+}
+setup();
+</script>
+</body>
+</html>
